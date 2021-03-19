@@ -1,0 +1,11 @@
+Id: IntegrationTests.ManifestUpdate.OneInstallerCreateAndDelete
+Version: 1.0
+Name: ManifestUpdate Test
+Publisher: Contoso
+Description: Test manifest update create and delete
+License: Text
+Installers: 
+    - Arch: x64
+      Url: https://stpkgmanvalwestustest.blob.core.windows.net/test-installers/VSCodeUserSetup-x64-1.46.1.exe
+      InstallerType: inno
+      Sha256: e29f73f5b6bad9ea5a484d9a934141a03d3fa39c55efd6e65e6e02dea6be9aa5

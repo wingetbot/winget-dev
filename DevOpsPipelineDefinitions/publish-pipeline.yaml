@@ -1,0 +1,164 @@
+# Publish pipeline for WinGet.
+
+# Name of the run
+name: '$(Build.DefinitionName)-$(Build.DefinitionVersion)-$(Date:yyyyMMdd)-$(Rev:r)'
+
+# Batch CI run. when a pipeline is running, the system waits until the run is completed,
+# then starts another run with all changes that have not yet been built.
+trigger:
+  batch: true
+  branches:
+    include:
+    - master
+
+pr: none
+
+jobs:
+
+# Agent phase.
+- job: 'CommitProcessing'
+  displayName: 'Commit Processing'
+  pool:
+    vmImage: 'windows-latest'
+  variables:
+    skipComponentGovernanceDetection: ${{ true }}
+    runCodesignValidationInjection: ${{ false }}
+  steps:
+
+  # Downloads all the setup files and its dependencies.
+  - task: AzureCLI@1
+    displayName: 'Azure Setup'
+    inputs:
+      azureSubscription: '$(WinGet.Subscription)'
+      scriptLocation: inlineScript
+      inlineScript: 'az storage blob download-batch -d . --pattern * -s servicewrapper --output none'
+    env:
+      AZURE_STORAGE_CONNECTION_STRING: $(ValidationStorageAccountConnectionString)
+
+  # WinGet setup
+  - script: 'winget_publish_setup.cmd'
+    name: 'wingetsetup'
+    displayName: 'WinGet Setup'
+    workingDirectory: scripts
+    env:
+      HOST_KEY: $(AzureFunctionHostKey)
+      SIGN_ENDPOINT: $(AzFuncSignEndpoint)
+      CLEANUP_ENDPOINT: $(AzFuncPublishCleanupEndpoint)
+
+  - task: CmdLine@2
+    displayName: 'Validate Commits'
+    inputs:
+      script: 'WinGetSvcWrapper.exe validate-commits --operationId %BUILD_BUILDNUMBER%'
+      failOnStderr: true
+    condition: succeeded()
+    env:
+      ValidationConnectionString: $(ValidationStorageAccountConnectionString)
+      CacheConnectionString: $(CacheStorageAccountConnectionString)
+      PackagePublisher: $(PackagePublisher)
+      DIApplicationInsightKey: $(DIApplicationInsightKey)
+      WinGet:AppConfig:Primary: $(AppConfigPrimary)
+      WinGet:AppConfig:Secondary: $(AppConfigSecondary)
+
+# Agentless phase. Depends on previous job. 
+- job: 'SignPackage'
+  pool: server
+  timeoutInMinutes: 1500
+  displayName: 'Sign package'
+  dependsOn:
+    - 'CommitProcessing'
+  variables:
+    HostKeySecret: $[ dependencies.CommitProcessing.outputs['wingetsetup.hostkey']]
+    SignEndpointSecret: $[ dependencies.CommitProcessing.outputs['wingetsetup.signEndpoint']]
+  steps:
+
+  # Sign package.
+  - task: AzureFunction@1
+    displayName: 'Signing package'
+    inputs:
+      function: '$(SignEndpointSecret)'
+      key: '$(HostKeySecret)'
+      body: |
+        {
+        "operationId": "$(Build.BuildNumber)",
+        "PlanUrl": "$(system.CollectionUri)",
+        "HubName": "$(system.HostType)",
+        "pipelineType": "CommitPipeline",
+        "ProjectId": "$(system.TeamProjectId)",
+        "PlanId": "$(system.PlanId)", 
+        "JobId": "$(system.JobId)", 
+        "TimelineId": "$(system.TimelineId)", 
+        "TaskInstanceId": "$(system.TaskInstanceId)",
+        "AuthToken": "$(system.AccessToken)"
+        }
+      waitForCompletion: "true"
+
+# Agent phase. Depends on previous job.
+- job: 'Publish'
+  displayName: 'Publish'
+  pool:
+    vmImage: 'windows-latest'
+  variables:
+    skipComponentGovernanceDetection: ${{ true }}
+    runCodesignValidationInjection: ${{ false }}
+  dependsOn:
+    - 'SignPackage'
+  steps:
+
+  # Downloads all the setup files and its dependencies.
+  - task: AzureCLI@1
+    displayName: 'Azure Setup'
+    inputs:
+      azureSubscription: '$(WinGet.Subscription)'
+      scriptLocation: inlineScript
+      inlineScript: 'az storage blob download-batch -d . --pattern * -s servicewrapper --output none'
+    env:
+      AZURE_STORAGE_CONNECTION_STRING: $(ValidationStorageAccountConnectionString)
+
+  # Validates integrity of pull request.
+  - task: CmdLine@2
+    displayName: 'Publish'
+    inputs:
+      script: 'WinGetSvcWrapper.exe publish --operationId %BUILD_BUILDNUMBER%'
+      failOnStderr: true
+    condition: succeeded()
+    env:
+      ValidationConnectionString: $(ValidationStorageAccountConnectionString)
+      CacheConnectionString: $(CacheStorageAccountConnectionString)
+      DIApplicationInsightKey: $(DIApplicationInsightKey)
+      WinGet:AppConfig:Primary: $(AppConfigPrimary)
+      WinGet:AppConfig:Secondary: $(AppConfigSecondary)
+
+# Agentless phase. Depends on previous job. 
+- job: 'Cleanup'
+  pool: server
+  timeoutInMinutes: 1500
+  displayName: 'Clean up'
+  dependsOn:
+    - 'CommitProcessing'
+    - 'Publish'
+  variables:
+    HostKeySecret: $[ dependencies.CommitProcessing.outputs['wingetsetup.hostkey']]
+    CleanEndpointSecret: $[ dependencies.CommitProcessing.outputs['wingetsetup.cleanupEndpoint']]
+  steps:
+
+  # Close issues.
+  - task: AzureFunction@1
+    displayName: 'Cleanup Issues'
+    inputs:
+      function: '$(CleanEndpointSecret)'
+      key: '$(HostKeySecret)'
+      body: |
+        {
+        "operationId": "$(Build.BuildNumber)",
+        "PlanUrl": "$(system.CollectionUri)",
+        "HubName": "$(system.HostType)",
+        "pipelineType": "CommitPipeline",
+        "ProjectId": "$(system.TeamProjectId)",
+        "PlanId": "$(system.PlanId)", 
+        "JobId": "$(system.JobId)", 
+        "TimelineId": "$(system.TimelineId)", 
+        "TaskInstanceId": "$(system.TaskInstanceId)",
+        "AuthToken": "$(system.AccessToken)",
+        "BuildRepositoryId": "$(build.repository.id)"
+        }
+      waitForCompletion: "true"

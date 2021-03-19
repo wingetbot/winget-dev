@@ -1,0 +1,17 @@
+Id: IntegrationTests.PublishModify
+Version: 16.0.4
+Name: PublishModify
+Publisher: IntegrationTests
+Author: 7zip
+License: Copyright (C) 1999-2020 Igor Pavlov. - GNU LGPL
+LicenseUrl: https://7-zip.org/license.txt
+Homepage: https://www.7-zip.org/
+Description: Free and open source file archiver with a high compression ratio.
+InstallerType: msi
+Installers:
+  - Arch: x64
+    Url: https://stpkgmanvalwestustest.blob.core.windows.net/test-installers/7z1604-x64.msi
+    Sha256: B3885B2F090F1E9B5CF2B9F802B07FE88E472D70D60732DB9F830209AC296067
+    Switches:
+      Silent: /quiet /norestart
+      SilentWithProgress: /passive /norestart
