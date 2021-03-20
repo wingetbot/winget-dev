@@ -1,16 +1,16 @@
-# Base testing file.
+# Automatically updated by the winget bot at 2021/Mar/20
 Id: Github.Atom
-Version: 1.43.0
+Version: 1.55.0
 Name: Atom
 Publisher: Github
 Homepage: https://atom.io/
 License: Copyright (c) 2020 GitHub Inc.
 LicenseUrl: https://help.github.com/en/github/site-policy/github-terms-of-service
 Description: A hackable text editor for the 21st Century.
-Installers: 
-    - Arch: x64
-      Url: https://atom.io/download/windows_x64
-      InstallerType: exe
-      Switches:
-        Silent: /silent
-      Sha256: 8A240A17642875C0AEB925CAE81D5800FE58452022945423CFA44B3378912D8C
+Installers:
+- Arch: x64
+  Url: https://atom.io/download/windows_x64
+  InstallerType: exe
+  Switches:
+    Silent: /silent
+  Sha256: EF47818F57030BE5F12D0AD878C20BB07A934701E747760CA4AC68907E442A19
